@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Heatro Data Viewer</title>
+<link rel="stylesheet" href="style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="layout">
+  <aside id="sidebar">
+    <header>
+      <h1>Heatro Viewer</h1>
+      <p class="sub">조선 외판 핫밴딩 데이터 3D 뷰어 · 로컬 JSON 업로드</p>
+    </header>
+
+    <section class="panel" id="uploadPanel">
+      <h2>1. 데이터 불러오기</h2>
+      <div id="dropZone" class="drop-zone">
+        <p><b>JSON 파일을 여기로 드래그</b></p>
+        <p class="hint">또는</p>
+        <input type="file" id="fileInput" accept=".json,application/json" multiple />
+        <label for="fileInput" class="btn-file">파일 선택 (여러 개 가능)</label>
+        <p class="hint" id="uploadStatus">업로드된 데이터셋: 0</p>
+      </div>
+    </section>
+
+    <section class="panel" id="datasetsPanel">
+      <h2>2. Datasets</h2>
+      <p class="hint">▣ = Primary (상세 표시) · ☑ = Compare (Source 표면만 겹쳐 표시)</p>
+      <div id="datasetList"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="clearDatasets">전체 제거</button>
+      </div>
+    </section>
+
+    <section class="panel" id="metaPanel" hidden>
+      <h2>Dataset Meta</h2>
+      <div id="datasetMeta" class="meta-block"></div>
+    </section>
+
+    <section class="panel" id="metricsPanel" hidden>
+      <h2>Metrics</h2>
+      <div id="metricsBlock" class="meta-block"></div>
+    </section>
+
+    <section class="panel" id="layersPanel" hidden>
+      <h2>Layers</h2>
+      <div class="row">
+        <button id="layersAll">모두 켜기</button>
+        <button id="layersNone">모두 끄기</button>
+      </div>
+      <div id="layerList"></div>
+    </section>
+
+    <section class="panel" id="curvesPanel" hidden>
+      <h2>Bending Curves (열 프로파일)</h2>
+      <div class="row">
+        <button id="curvesAll">전부 켜기</button>
+        <button id="curvesNone">전부 끄기</button>
+      </div>
+      <div id="curvesList"></div>
+    </section>
+
+    <section class="panel" id="curveDetailPanel" hidden>
+      <h2>Curve Detail</h2>
+      <div id="curveDetail" class="meta-block">
+        <em class="hint">곡선을 선택하면 상세 파라미터가 표시됩니다.</em>
+      </div>
+    </section>
+
+    <section class="panel" id="viewPanel" hidden>
+      <h2>View</h2>
+      <div class="row">
+        <button id="resetView">뷰 리셋</button>
+        <button id="topView">Top</button>
+        <button id="sideView">Side</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="toggleLabels" checked /> 라벨(텍스트) 표시</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="toggleWire" /> Wireframe 표시</label>
+      </div>
+    </section>
+
+    <section class="panel" id="legendPanel" hidden>
+      <h2>Deviation Legend</h2>
+      <div id="legendBar"></div>
+      <div id="legendTicks"></div>
+      <p class="hint">Primary 데이터셋의 Source ↔ Target 표면 거리 (mm).</p>
+    </section>
+
+    <section class="panel" id="helpPanel">
+      <h2>도움말</h2>
+      <ul class="help">
+        <li><b>가열 전 스캔</b> = Source 표면 (파랑)</li>
+        <li><b>설계 목표</b> = Target 표면 (금색)</li>
+        <li><b>가열 후 스캔</b>은 <u>다음 iteration의 JSON</u>을 올려 Primary로 설정하고, 이전 JSON을 Compare로 추가하면 겹쳐볼 수 있음</li>
+        <li>Compare는 각 데이터셋의 Source 표면만 고유 색으로 표시</li>
+      </ul>
+    </section>
+  </aside>
+
+  <main id="viewport">
+    <div id="canvas-host"></div>
+    <div id="label-host"></div>
+    <div id="tooltip"></div>
+    <div id="emptyState">
+      <div>
+        <h2>데이터 파일을 업로드하세요</h2>
+        <p>왼쪽 사이드바의 드롭존에 <code>.json</code> 파일을 드래그하거나 "파일 선택"으로 불러옵니다.</p>
+        <p class="hint">데이터는 로컬 브라우저에서만 처리되며 서버에 업로드되지 않습니다.</p>
+      </div>
+    </div>
+  </main>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
