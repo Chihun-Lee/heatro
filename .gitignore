@@ -1,0 +1,30 @@
+# 실제 측정 데이터 — 저장소에 올리지 않음 (로컬 업로드로만 사용)
+data/
+viewer/data.js
+
+# 회사 자료 (외부 공개 금지)
+*.pdf
+*.pptx
+*.docx
+*.xlsx
+*.hwp
+*.hwpx
+
+# OS / 에디터
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 빌드/로그
+*.log
+dist/
+build/
+node_modules/
