@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Heatro Data Viewer</title>
+<title>Heatro Data Viewer v2.0</title>
 <link rel="stylesheet" href="style.css" />
 <script type="importmap">
 {
@@ -18,7 +18,7 @@
 <div id="layout">
   <aside id="sidebar">
     <header>
-      <h1>Heatro Viewer</h1>
+      <h1>Heatro Viewer <span class="ver">v2.0</span></h1>
       <p class="sub">조선 외판 핫밴딩 데이터 3D 뷰어 · 로컬 JSON 업로드</p>
     </header>
 
@@ -78,11 +78,29 @@
     </section>
 
     <section class="panel" id="viewPanel" hidden>
-      <h2>View</h2>
+      <h2>View · Camera</h2>
+      <div class="row preset-row">
+        <button id="resetView" title="전체 프레임에 맞춤">Fit</button>
+        <button id="isoView" title="등각 투상 (Az 45°, El 35°)">ISO</button>
+      </div>
+      <div class="row preset-row">
+        <button data-view="top">Top</button>
+        <button data-view="bottom">Bot</button>
+        <button data-view="front">Front</button>
+        <button data-view="back">Back</button>
+        <button data-view="left">Left</button>
+        <button data-view="right">Right</button>
+      </div>
+      <div class="row angle-row">
+        <label>Az°</label>
+        <input type="number" id="azInput" value="45" step="5" />
+        <label>El°</label>
+        <input type="number" id="elInput" value="35" step="5" />
+        <button id="goAngle" title="해당 각도로 부드럽게 전환">Go</button>
+        <button id="syncAngle" title="현재 카메라 각도 읽어오기">←Now</button>
+      </div>
       <div class="row">
-        <button id="resetView">뷰 리셋</button>
-        <button id="topView">Top</button>
-        <button id="sideView">Side</button>
+        <label><input type="checkbox" id="smoothCam" checked /> 카메라 댐핑 (부드럽게)</label>
       </div>
       <div class="row">
         <label><input type="checkbox" id="toggleLabels" checked /> 라벨(텍스트) 표시</label>
@@ -90,6 +108,39 @@
       <div class="row">
         <label><input type="checkbox" id="toggleWire" /> Wireframe 표시</label>
       </div>
+      <p class="hint hint-controls">
+        좌클릭=회전 · <b>휠클릭=화면이동(Pan)</b> · 우클릭=화면이동 · 스크롤=줌 · Shift+드래그=Pan
+      </p>
+    </section>
+
+    <section class="panel" id="topDevPanel" hidden>
+      <h2>Top-View Deviation</h2>
+      <p class="hint">곡면 <b>위쪽 평면</b>에 각 포인트를 원으로 투영해 Target 대비 편차를 색으로 표시.<br/>
+        <span class="dot-blue"></span> 일치 (≈0&nbsp;mm) → <span class="dot-red"></span> 임계값 이상.</p>
+      <div class="row">
+        <label><input type="checkbox" id="topDevSourceCb" /> Source 편차</label>
+        <label><input type="checkbox" id="topDevTargetCb" /> Target 기준점</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="topDevPostCb" disabled /> 공정후 (데이터 없음)</label>
+      </div>
+      <div class="row slider-row">
+        <label>임계값 (mm)</label>
+        <input type="range" id="topDevThreshold" min="0.5" max="50" step="0.5" value="5" />
+        <span id="topDevThresholdVal" class="num">5.0</span>
+      </div>
+      <div class="row slider-row">
+        <label>Z 오프셋 (mm)</label>
+        <input type="range" id="topDevZOffset" min="0" max="3000" step="50" value="600" />
+        <span id="topDevZOffsetVal" class="num">600</span>
+      </div>
+      <div class="row slider-row">
+        <label>원 크기 (px)</label>
+        <input type="range" id="topDevSize" min="4" max="40" step="1" value="14" />
+        <span id="topDevSizeVal" class="num">14</span>
+      </div>
+      <div id="topDevLegendBar"></div>
+      <div id="topDevLegendTicks"></div>
     </section>
 
     <section class="panel" id="legendPanel" hidden>
@@ -106,6 +157,7 @@
         <li><b>설계 목표</b> = Target 표면 (금색)</li>
         <li><b>가열 후 스캔</b>은 <u>다음 iteration의 JSON</u>을 올려 Primary로 설정하고, 이전 JSON을 Compare로 추가하면 겹쳐볼 수 있음</li>
         <li>Compare는 각 데이터셋의 Source 표면만 고유 색으로 표시</li>
+        <li><b>v2.0 신규</b>: View 패널의 Az/El 입력으로 임의 각도 부드럽게 전환 · 휠클릭으로 화면 이동 · <i>Top-View Deviation</i> 으로 편차 한눈 확인</li>
       </ul>
     </section>
   </aside>
@@ -114,6 +166,11 @@
     <div id="canvas-host"></div>
     <div id="label-host"></div>
     <div id="tooltip"></div>
+    <div id="credit">
+      <div class="credit-line"><b>Heatro Viewer</b> · v2.0</div>
+      <div class="credit-line">Updated 2026-05-14</div>
+      <div class="credit-line">Chihun Lee · <a href="mailto:chihunlee@kims.re.kr">chihunlee@kims.re.kr</a></div>
+    </div>
     <div id="emptyState">
       <div>
         <h2>데이터 파일을 업로드하세요</h2>
