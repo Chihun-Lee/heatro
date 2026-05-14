@@ -165,10 +165,14 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 #legendBar {
   height: 14px;
   border-radius: 2px;
-  background: linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725);
+  background: linear-gradient(to right, #4ea8ff, #9a6cb7, #ff4040);
   margin-bottom: 4px;
 }
-#legendTicks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--sub); }
+#legendTicks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--sub); gap: 6px; }
+#legendTicks .lg-blue { color: #4ea8ff; }
+#legendTicks .lg-red  { color: #ff4040; }
+#legendSummary { margin-top: 6px; line-height: 1.6; }
+#legendSummary b { color: var(--text); }
 
 .ver {
   font-size: 11px;

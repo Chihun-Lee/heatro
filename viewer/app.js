@@ -322,13 +322,17 @@ function makeSurface(points2d, color, { withColors = false } = {}) {
   return mesh;
 }
 
-// Source 그리드 포인트의 실제 3D 위치에 정사각형 scatter (viridis) 로 편차 표시.
-// 면이 아니라 점군이라 Source/Target 표면과 독립적으로 토글 가능.
-function makeDeviationScatter(src2d, tgt2d, pointSize = 8) {
-  if (!src2d?.length || !tgt2d?.length) return { obj: null, min: 0, max: 0 };
+// Source 그리드 포인트의 (x, y, z + zShift) 에 정사각형 scatter.
+// 컬러맵: 일치(min) → 파랑 / 불일치(max) → 빨강 (linear).
+// 곡면/곡선 위로 zShift 만큼 들어올려 기존 레이어와 겹치지 않게 표시.
+const DEV_BLUE = new THREE.Color(0x4ea8ff);
+const DEV_RED  = new THREE.Color(0xff4040);
+
+function makeDeviationScatter(src2d, tgt2d, pointSize = 9, zShift = 0) {
+  if (!src2d?.length || !tgt2d?.length) return { obj: null, min: 0, max: 0, shift: zShift };
   const rows = Math.min(src2d.length, tgt2d.length);
   const cols = Math.min(src2d[0]?.length || 0, tgt2d[0]?.length || 0);
-  if (!rows || !cols) return { obj: null, min: 0, max: 0 };
+  if (!rows || !cols) return { obj: null, min: 0, max: 0, shift: zShift };
   const n = rows * cols;
   const pos = new Float32Array(n * 3);
   const col = new Float32Array(n * 3);
@@ -339,7 +343,7 @@ function makeDeviationScatter(src2d, tgt2d, pointSize = 8) {
     const a = src2d[r][c], b = tgt2d[r][c];
     pos[i*3]     = a[0];
     pos[i*3 + 1] = a[1];
-    pos[i*3 + 2] = a[2];   // 곡면 위 (= curve 입력점 높이) 에 그대로 안착
+    pos[i*3 + 2] = a[2] + zShift;
     const dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
     const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
     dists[i] = d;
@@ -347,10 +351,13 @@ function makeDeviationScatter(src2d, tgt2d, pointSize = 8) {
     if (d > dMax) dMax = d;
   }
   const span = Math.max(1e-6, dMax - dMin);
+  const tmp = new THREE.Color();
   for (let i = 0; i < n; i++) {
     const t = (dists[i] - dMin) / span;
-    const [rr, gg, bb] = viridis(t);
-    col[i*3] = rr; col[i*3 + 1] = gg; col[i*3 + 2] = bb;
+    tmp.copy(DEV_BLUE).lerp(DEV_RED, t);
+    col[i*3]     = tmp.r;
+    col[i*3 + 1] = tmp.g;
+    col[i*3 + 2] = tmp.b;
   }
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -361,12 +368,12 @@ function makeDeviationScatter(src2d, tgt2d, pointSize = 8) {
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
-    depthTest: false,        // 표면 뒤로 가려져도 보이게 (독립 시각화)
+    depthTest: false,        // 들어올린 위치에서도 항상 보이게 (독립 시각화)
     depthWrite: false,
   });
   const obj = new THREE.Points(geom, mat);
   obj.renderOrder = 12;
-  return { obj, min: dMin, max: dMax };
+  return { obj, min: dMin, max: dMax, shift: zShift };
 }
 
 function makePolyline(points, color, { dashed = false } = {}) {
@@ -381,12 +388,12 @@ function makePolyline(points, color, { dashed = false } = {}) {
   return line;
 }
 
-function makeTube(points, color, radius = 8) {
+function makeTube(points, color, radius = 14) {
   if (!points || points.length < 2) return null;
   const pts = points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
   const segs = Math.max(32, Math.min(400, pts.length * 6));
-  const geom = new THREE.TubeGeometry(curve, segs, radius, 6, false);
+  const geom = new THREE.TubeGeometry(curve, segs, radius, 8, false);
   const mat = new THREE.MeshStandardMaterial({
     color, metalness: 0.2, roughness: 0.6,
     transparent: true, opacity: 1.0,
@@ -595,8 +602,20 @@ function reloadScene() {
     layerObjects.target.push(tgtMesh);
   }
 
-  // Deviation Scatter — Source 그리드 위치에 정사각형 점으로 viridis 색칠
-  const devScatter = makeDeviationScatter(d.sourceGrid.points, d.targetGrid.points, 8);
+  // Deviation Scatter — 곡면 위로 zShift 만큼 들어올려 단독 시각화
+  // zShift = 모델 Z 폭의 25% 또는 최소 300mm (튜브/표면과 안 겹치게)
+  let zMin = Infinity, zMax = -Infinity;
+  const collectZ = (pts2d) => {
+    for (const row of pts2d || []) for (const p of row || []) {
+      if (p[2] < zMin) zMin = p[2];
+      if (p[2] > zMax) zMax = p[2];
+    }
+  };
+  collectZ(d.sourceGrid.points);
+  collectZ(d.targetGrid.points);
+  const zSpan = Math.max(0, zMax - zMin);
+  const zShift = Math.max(300, zSpan * 0.25);
+  const devScatter = makeDeviationScatter(d.sourceGrid.points, d.targetGrid.points, 9, zShift);
   if (devScatter.obj) {
     root.add(devScatter.obj);
     layerObjects.deviation.push(devScatter.obj);
@@ -624,7 +643,7 @@ function reloadScene() {
   ];
   (d.bendingCurves || []).forEach((c, i) => {
     const col = curveColors[i % curveColors.length];
-    const tube = makeTube(c.points, col, 8);
+    const tube = makeTube(c.points, col, 14);
     if (tube) {
       tube.material.opacity = LAYER_STATE.curves.opacity;
       tube.renderOrder = 10;
@@ -785,6 +804,13 @@ function setLayerVisible(id, visible) {
   (layerObjects[id] || []).forEach(o => { o.visible = visible; });
   if (id === 'grid') gridHelper.visible = visible;
   if (id === 'axes') axesHelper.visible = visible;
+  if (id === 'deviation') {
+    const lp = document.getElementById('legendPanel');
+    if (lp) {
+      if (visible && DATASETS[primaryIdx]) lp.removeAttribute('hidden');
+      else lp.setAttribute('hidden', '');
+    }
+  }
 }
 
 function setLayerOpacity(id, opacity) {
@@ -938,16 +964,41 @@ function updateLegend({ min, max }) {
   const ticks = document.getElementById('legendTicks');
   if (!ticks) return;
   const mid = (min + max) / 2;
-  ticks.innerHTML = `<span>${fmt(min)}</span><span>${fmt(mid)}</span><span>${fmt(max)} (mm)</span>`;
+  ticks.innerHTML =
+    `<span class="lg-blue">● 일치 ${fmt(min, 2)}</span>` +
+    `<span>${fmt(mid, 2)} mm</span>` +
+    `<span class="lg-red">${fmt(max, 2)} 불일치 ●</span>`;
+  const summary = document.getElementById('legendSummary');
+  if (summary) {
+    const matchPct = (() => {
+      // 단순 점수: 1 - max(0, min(1, mean/threshold))
+      const span = max - min;
+      if (!Number.isFinite(span) || span <= 0) return 100;
+      // 평균에 근접한 "일치도": min 이 0 에 가깝고 max 가 작을수록 좋다.
+      // 여기서는 max 기준으로 임계 5mm 와 비교하는 간이 지표 제공
+      const t = Math.min(1, max / 5);
+      return ((1 - t) * 100);
+    })();
+    summary.innerHTML =
+      `Src↔Tgt 거리 범위: <b>${fmt(min, 2)} ~ ${fmt(max, 2)} mm</b><br>` +
+      `5 mm 기준 거시적 일치도 ≈ <b>${matchPct.toFixed(0)}%</b>` +
+      ` <span class="hint">(파랑=일치, 빨강=불일치)</span>`;
+  }
 }
 
 function showUIPanels(show) {
-  ['metaPanel','metricsPanel','layersPanel','curvesPanel','curveDetailPanel','viewPanel','topDevPanel','legendPanel']
+  ['metaPanel','metricsPanel','layersPanel','curvesPanel','curveDetailPanel','viewPanel','topDevPanel']
     .forEach(id => {
       const el = document.getElementById(id);
       if (show) el.removeAttribute('hidden');
       else el.setAttribute('hidden', '');
     });
+  // legendPanel 은 Deviation 레이어 토글 상태를 따른다
+  const lp = document.getElementById('legendPanel');
+  if (lp) {
+    if (show && LAYER_STATE.deviation.visible) lp.removeAttribute('hidden');
+    else lp.setAttribute('hidden', '');
+  }
 }
 
 // ============================================================================
