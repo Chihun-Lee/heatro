@@ -18,11 +18,10 @@ const COMPARE_PALETTE = [
 const LAYER_DEFS = [
   { id: 'source',      name: 'Source 표면 (가열 전 스캔)',  color: 0x4ea8ff, opacity: 0.85 },
   { id: 'target',      name: 'Target 표면 (설계 목표)',      color: 0xffb545, opacity: 0.35 },
-  { id: 'deviation',   name: 'Deviation Heatmap (Src↔Tgt)',  color: 0x00ff88, opacity: 0.9  },
+  { id: 'deviation',   name: 'Deviation Scatter (Src↔Tgt)',  color: 0x00ff88, opacity: 1.0  },
   { id: 'designEdges', name: 'Design Boundary Edges',        color: 0xffb545, opacity: 1.0  },
   { id: 'measureEdges',name: 'Measured Boundary Edges',      color: 0x4ea8ff, opacity: 1.0  },
   { id: 'curves',      name: 'Bending Curves (열 프로파일)', color: 0xff5577, opacity: 1.0  },
-  { id: 'curveInputs', name: 'Curve 입력 점',                color: 0xffffff, opacity: 1.0  },
   { id: 'directions',  name: '방향 라벨 (AFT/FORE/TOP/BOTTOM)', color: 0x4ea8ff, opacity: 1.0 },
   { id: 'seams',       name: 'Seam 라벨 (S4xx/S9xx)',        color: 0xffb545, opacity: 1.0  },
   { id: 'compare',     name: 'Compare Source 표면들',        color: 0x00ff88, opacity: 0.55 },
@@ -323,30 +322,51 @@ function makeSurface(points2d, color, { withColors = false } = {}) {
   return mesh;
 }
 
-function applyDeviationColors(mesh, src2d, tgt2d) {
-  if (!mesh || !src2d?.length || !tgt2d?.length) return { min: 0, max: 0 };
+// Source 그리드 포인트의 실제 3D 위치에 정사각형 scatter (viridis) 로 편차 표시.
+// 면이 아니라 점군이라 Source/Target 표면과 독립적으로 토글 가능.
+function makeDeviationScatter(src2d, tgt2d, pointSize = 8) {
+  if (!src2d?.length || !tgt2d?.length) return { obj: null, min: 0, max: 0 };
   const rows = Math.min(src2d.length, tgt2d.length);
-  const cols = Math.min(src2d[0].length, tgt2d[0].length);
-  const dists = new Float32Array(rows * cols);
+  const cols = Math.min(src2d[0]?.length || 0, tgt2d[0]?.length || 0);
+  if (!rows || !cols) return { obj: null, min: 0, max: 0 };
+  const n = rows * cols;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const dists = new Float32Array(n);
   let dMin = Infinity, dMax = -Infinity;
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c;
     const a = src2d[r][c], b = tgt2d[r][c];
+    pos[i*3]     = a[0];
+    pos[i*3 + 1] = a[1];
+    pos[i*3 + 2] = a[2];   // 곡면 위 (= curve 입력점 높이) 에 그대로 안착
     const dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
     const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
-    dists[r*cols+c] = d;
+    dists[i] = d;
     if (d < dMin) dMin = d;
     if (d > dMax) dMax = d;
   }
-  const colors = mesh.geometry.getAttribute('color');
-  if (!colors) return { min: dMin, max: dMax };
   const span = Math.max(1e-6, dMax - dMin);
-  for (let i = 0; i < dists.length; i++) {
+  for (let i = 0; i < n; i++) {
     const t = (dists[i] - dMin) / span;
-    const [r, g, b] = viridis(t);
-    colors.array[i*3] = r; colors.array[i*3+1] = g; colors.array[i*3+2] = b;
+    const [rr, gg, bb] = viridis(t);
+    col[i*3] = rr; col[i*3 + 1] = gg; col[i*3 + 2] = bb;
   }
-  colors.needsUpdate = true;
-  return { min: dMin, max: dMax };
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  // map 없는 PointsMaterial 은 GPU 가 정사각형 점으로 그림 (이미지 참조 스타일)
+  const mat = new THREE.PointsMaterial({
+    size: pointSize,
+    sizeAttenuation: false,
+    vertexColors: true,
+    transparent: true,
+    depthTest: false,        // 표면 뒤로 가려져도 보이게 (독립 시각화)
+    depthWrite: false,
+  });
+  const obj = new THREE.Points(geom, mat);
+  obj.renderOrder = 12;
+  return { obj, min: dMin, max: dMax };
 }
 
 function makePolyline(points, color, { dashed = false } = {}) {
@@ -554,17 +574,15 @@ function reloadScene() {
   emptyState.classList.toggle('hidden', true);
   const d = DATASETS[primaryIdx];
 
-  // Source 표면
-  const srcMesh = makeSurface(d.sourceGrid.points, 0x4ea8ff, { withColors: true });
+  // Source 표면 (단색)
+  const srcMesh = makeSurface(d.sourceGrid.points, 0x4ea8ff);
   if (srcMesh) {
     srcMesh.material.opacity = LAYER_STATE.source.opacity;
-    srcMesh.material.vertexColors = LAYER_STATE.deviation.visible;
     srcMesh.material.depthWrite = false;
     srcMesh.renderOrder = 1;
     srcMesh.material.needsUpdate = true;
     root.add(srcMesh);
     layerObjects.source.push(srcMesh);
-    layerObjects.deviation.push(srcMesh);
   }
 
   // Target 표면
@@ -577,10 +595,13 @@ function reloadScene() {
     layerObjects.target.push(tgtMesh);
   }
 
-  // Deviation colormap 미리 계산
-  const devRange = srcMesh
-    ? applyDeviationColors(srcMesh, d.sourceGrid.points, d.targetGrid.points)
-    : { min: 0, max: 0 };
+  // Deviation Scatter — Source 그리드 위치에 정사각형 점으로 viridis 색칠
+  const devScatter = makeDeviationScatter(d.sourceGrid.points, d.targetGrid.points, 8);
+  if (devScatter.obj) {
+    root.add(devScatter.obj);
+    layerObjects.deviation.push(devScatter.obj);
+  }
+  const devRange = { min: devScatter.min, max: devScatter.max };
   updateLegend(devRange);
 
   // Design boundary edges
@@ -611,17 +632,6 @@ function reloadScene() {
       root.add(tube);
       layerObjects.curves.push(tube);
       curveObjects.set(c.curveId, { line: tube, color: col });
-    }
-    const inpts = makePointsObj(c.inputPoints, 0xffffff, 14);
-    if (inpts) {
-      inpts.material.opacity = LAYER_STATE.curveInputs.opacity;
-      inpts.material.depthTest = false;
-      inpts.renderOrder = 11;
-      root.add(inpts);
-      layerObjects.curveInputs.push(inpts);
-      const entry = curveObjects.get(c.curveId) || {};
-      entry.dots = inpts;
-      curveObjects.set(c.curveId, entry);
     }
   });
 
@@ -773,12 +783,6 @@ function fitCamera() {
 function setLayerVisible(id, visible) {
   LAYER_STATE[id].visible = visible;
   (layerObjects[id] || []).forEach(o => { o.visible = visible; });
-  if (id === 'deviation') {
-    layerObjects.source.forEach(m => {
-      m.material.vertexColors = visible;
-      m.material.needsUpdate = true;
-    });
-  }
   if (id === 'grid') gridHelper.visible = visible;
   if (id === 'axes') axesHelper.visible = visible;
 }
@@ -890,10 +894,7 @@ function renderCurvesList(d) {
       e.stopPropagation();
       const v = e.target.checked;
       const obj = curveObjects.get(c.curveId);
-      if (obj) {
-        if (obj.line) obj.line.visible = v && LAYER_STATE.curves.visible;
-        if (obj.dots) obj.dots.visible = v && LAYER_STATE.curveInputs.visible;
-      }
+      if (obj && obj.line) obj.line.visible = v && LAYER_STATE.curves.visible;
     });
     row.addEventListener('click', e => {
       if (e.target.tagName === 'INPUT') return;
