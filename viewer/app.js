@@ -58,8 +58,49 @@ labelRenderer.domElement.style.inset = '0';
 labelRenderer.domElement.style.pointerEvents = 'none';
 labelHost.appendChild(labelRenderer.domElement);
 
+// CAD 스타일 부드러운 조작
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.dampingFactor = 0.08;          // 작을수록 더 부드러움
+controls.rotateSpeed = 0.7;
+controls.panSpeed = 0.9;
+controls.zoomSpeed = 0.9;
+controls.screenSpacePanning = true;     // 화면 평면 기준 pan (CAD 관습)
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.PAN,              // 휠클릭 = 절대 위치 이동(Pan)
+  RIGHT: THREE.MOUSE.PAN,
+};
+controls.touches = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_PAN,
+};
+
+// 카메라 tween (프리셋/사용자 각도 전환을 부드럽게)
+const cameraTween = { active: false };
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+function animateCameraTo(targetPos, targetLookAt, upVec, duration = 650) {
+  cameraTween.active = true;
+  cameraTween.startPos = camera.position.clone();
+  cameraTween.endPos = targetPos.clone();
+  cameraTween.startTarget = controls.target.clone();
+  cameraTween.endTarget = targetLookAt.clone();
+  cameraTween.startUp = camera.up.clone();
+  cameraTween.endUp = (upVec || camera.up).clone();
+  cameraTween.startTime = performance.now();
+  cameraTween.duration = duration;
+}
+function updateCameraTween() {
+  if (!cameraTween.active) return;
+  const k = Math.min(1, (performance.now() - cameraTween.startTime) / cameraTween.duration);
+  const t = easeInOutCubic(k);
+  camera.position.lerpVectors(cameraTween.startPos, cameraTween.endPos, t);
+  controls.target.lerpVectors(cameraTween.startTarget, cameraTween.endTarget, t);
+  camera.up.lerpVectors(cameraTween.startUp, cameraTween.endUp, t).normalize();
+  if (k >= 1) cameraTween.active = false;
+}
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -92,6 +133,19 @@ scene.add(root);
 const layerObjects = {};
 LAYER_DEFS.forEach(l => { layerObjects[l.id] = []; });
 const curveObjects = new Map();
+
+// Top-View Deviation 상태
+const TOP_DEV = {
+  source: false,
+  target: false,
+  post: false,
+  threshold: 5,     // mm
+  zOffset: 600,     // mm above bbox.max.z
+  size: 14,         // px
+  group: new THREE.Group(),
+};
+TOP_DEV.group.name = 'TopDevGroup';
+scene.add(TOP_DEV.group);
 
 // ============================================================================
 // JSON 파싱 (build_data.py 와 동등)
@@ -321,6 +375,82 @@ function makeTube(points, color, radius = 8) {
   return new THREE.Mesh(geom, mat);
 }
 
+// 동그라미 스프라이트 텍스처 (Top-View Deviation 용)
+function makeCircleTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  // 부드러운 가장자리 + 흰색 윤곽 → vertexColors로 색을 입혀도 또렷
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+  grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.55, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.78, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.95, 'rgba(255,255,255,0.05)');
+  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(32, 32, 32, 0, Math.PI * 2);
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const CIRCLE_TEX = makeCircleTexture();
+
+// 편차에 따른 색 (blue → red)
+const TD_BLUE = new THREE.Color(0x4ea8ff);
+const TD_RED  = new THREE.Color(0xff4040);
+function deviationColor(dev, threshold, out) {
+  const t = Math.min(1, Math.max(0, dev / Math.max(1e-6, threshold)));
+  out.copy(TD_BLUE).lerp(TD_RED, t);
+  return out;
+}
+
+// (src - ref) 3D 거리로 색칠한 점군. ref 가 null 이면 0 으로 간주 (Target self-reference).
+function makeDeviationPointCloud(srcPts2d, refPts2d, zPlane, threshold, sizePx) {
+  if (!srcPts2d?.length || !srcPts2d[0]?.length) return null;
+  const rows = srcPts2d.length;
+  const cols = srcPts2d[0].length;
+  const n = rows * cols;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const tmp = new THREE.Color();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const p = srcPts2d[r][c];
+      const i = r * cols + c;
+      pos[i * 3]     = p[0];
+      pos[i * 3 + 1] = p[1];
+      pos[i * 3 + 2] = zPlane;
+      let dev = 0;
+      if (refPts2d?.[r]?.[c]) {
+        const q = refPts2d[r][c];
+        const dx = p[0] - q[0], dy = p[1] - q[1], dz = p[2] - q[2];
+        dev = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      }
+      deviationColor(dev, threshold, tmp);
+      col[i * 3]     = tmp.r;
+      col[i * 3 + 1] = tmp.g;
+      col[i * 3 + 2] = tmp.b;
+    }
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({
+    size: sizePx,
+    sizeAttenuation: false,
+    map: CIRCLE_TEX,
+    alphaTest: 0.15,
+    transparent: true,
+    depthWrite: false,
+    vertexColors: true,
+  });
+  const obj = new THREE.Points(geom, mat);
+  obj.renderOrder = 20;
+  return obj;
+}
+
 function makePointsObj(points, color, size = 12) {
   if (!points || !points.length) return null;
   const arr = new Float32Array(points.length * 3);
@@ -345,20 +475,74 @@ function makeLabel(text, point, cls = '') {
 // ============================================================================
 // 씬 재구성
 // ============================================================================
+function disposeObj(obj) {
+  obj.traverse(o => {
+    if (o.geometry) o.geometry.dispose?.();
+    if (o.material) {
+      if (Array.isArray(o.material)) o.material.forEach(m => m.dispose?.());
+      else o.material.dispose?.();
+    }
+  });
+}
+
 function clearScene() {
   while (root.children.length) {
     const obj = root.children.pop();
-    obj.traverse(o => {
-      if (o.geometry) o.geometry.dispose?.();
-      if (o.material) {
-        if (Array.isArray(o.material)) o.material.forEach(m => m.dispose?.());
-        else o.material.dispose?.();
-      }
-    });
+    disposeObj(obj);
+  }
+  while (TOP_DEV.group.children.length) {
+    const obj = TOP_DEV.group.children.pop();
+    disposeObj(obj);
   }
   labelHost.querySelectorAll('.label-tag').forEach(el => el.remove());
   LAYER_DEFS.forEach(l => { layerObjects[l.id] = []; });
   curveObjects.clear();
+}
+
+function rebuildTopDev() {
+  while (TOP_DEV.group.children.length) {
+    const o = TOP_DEV.group.children.pop();
+    disposeObj(o);
+  }
+  if (primaryIdx < 0 || !DATASETS[primaryIdx]) {
+    updateTopDevLegend();
+    return;
+  }
+  const d = DATASETS[primaryIdx];
+  // 메쉬 bbox 의 max.z 를 기준으로 평면 결정
+  const box = new THREE.Box3().setFromObject(root);
+  const baseZ = box.isEmpty() ? 0 : box.max.z;
+  const layerSpacing = TOP_DEV.zOffset * 0.45;     // 세 층이 겹치지 않게 약간 띄움
+
+  // 1) Source 편차: |source - target|
+  if (TOP_DEV.source) {
+    const obj = makeDeviationPointCloud(
+      d.sourceGrid.points, d.targetGrid.points,
+      baseZ + TOP_DEV.zOffset,
+      TOP_DEV.threshold, TOP_DEV.size,
+    );
+    if (obj) TOP_DEV.group.add(obj);
+  }
+  // 2) Target 자기 기준 (편차 0 → 전부 파랑, 위치 확인용)
+  if (TOP_DEV.target) {
+    const obj = makeDeviationPointCloud(
+      d.targetGrid.points, null,
+      baseZ + TOP_DEV.zOffset + layerSpacing,
+      TOP_DEV.threshold, TOP_DEV.size,
+    );
+    if (obj) TOP_DEV.group.add(obj);
+  }
+  // 3) 공정후 데이터: 아직 없음 (placeholder)
+  // postPoints 가 추후 추가되면 같은 패턴으로 빌드.
+  updateTopDevLegend();
+}
+
+function updateTopDevLegend() {
+  const ticks = document.getElementById('topDevLegendTicks');
+  if (!ticks) return;
+  const t = TOP_DEV.threshold;
+  ticks.innerHTML =
+    `<span>0</span><span>${(t/2).toFixed(1)}</span><span>≥ ${t.toFixed(1)} mm</span>`;
 }
 
 function reloadScene() {
@@ -490,18 +674,97 @@ function reloadScene() {
   renderMetrics(d, devRange);
   renderCurvesList(d);
   renderCurveDetail(null);
+  rebuildTopDev();
   fitCamera();
 }
 
-function fitCamera() {
+// 카메라 위치 계산: Z-up 구면 좌표 → 월드 위치
+function sphericalToPosition(targetCenter, azDeg, elDeg, distance) {
+  // top/bottom 특이점 회피용 클램프 (±89.5°)
+  const elClamped = Math.max(-89.5, Math.min(89.5, elDeg));
+  const az = THREE.MathUtils.degToRad(azDeg);
+  const el = THREE.MathUtils.degToRad(elClamped);
+  const dir = new THREE.Vector3(
+    Math.cos(el) * Math.cos(az),
+    Math.cos(el) * Math.sin(az),
+    Math.sin(el),
+  );
+  return targetCenter.clone().add(dir.multiplyScalar(distance));
+}
+
+function getCurrentAngles() {
+  // 현재 카메라의 az/el (deg) 계산
+  const v = camera.position.clone().sub(controls.target);
+  const d = v.length();
+  if (d < 1e-6) return { az: 0, el: 35, dist: 1 };
+  const el = THREE.MathUtils.radToDeg(Math.asin(v.z / d));
+  const az = THREE.MathUtils.radToDeg(Math.atan2(v.y, v.x));
+  return { az, el, dist: d };
+}
+
+function fitDistanceFromBox(box) {
+  if (box.isEmpty()) return 5000;
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  return sphere.radius / Math.sin((camera.fov * Math.PI) / 360) * 1.25;
+}
+
+// 프리셋 시점 정의 (Z-up 좌표계)
+const VIEW_PRESETS = {
+  iso:    { az: 45,  el: 35,  up: [0, 0, 1] },
+  top:    { az: 90,  el: 89.5, up: [0, 1, 0] },   // +Z 에서 내려다봄, 화면 위 = +Y
+  bottom: { az: 90,  el: -89.5, up: [0, 1, 0] },
+  front:  { az: -90, el: 0,   up: [0, 0, 1] },    // -Y 에서 바라봄 (모델의 "앞")
+  back:   { az: 90,  el: 0,   up: [0, 0, 1] },
+  left:   { az: 180, el: 0,   up: [0, 0, 1] },
+  right:  { az: 0,   el: 0,   up: [0, 0, 1] },
+};
+
+function applyView(name, { animate = true, fit = false } = {}) {
+  const preset = VIEW_PRESETS[name];
+  if (!preset) return;
   const box = new THREE.Box3().setFromObject(root);
   if (box.isEmpty()) return;
   const sphere = box.getBoundingSphere(new THREE.Sphere());
-  const dist = sphere.radius / Math.sin((camera.fov * Math.PI) / 360);
-  const dir = new THREE.Vector3(1, -1, 0.9).normalize();
-  camera.position.copy(sphere.center.clone().add(dir.multiplyScalar(dist * 1.2)));
-  controls.target.copy(sphere.center);
-  controls.update();
+  const dist = fit ? fitDistanceFromBox(box) : Math.max(camera.position.distanceTo(controls.target), fitDistanceFromBox(box));
+  const pos = sphericalToPosition(sphere.center, preset.az, preset.el, dist);
+  const upVec = new THREE.Vector3(preset.up[0], preset.up[1], preset.up[2]);
+  if (animate) animateCameraTo(pos, sphere.center, upVec);
+  else {
+    camera.position.copy(pos);
+    controls.target.copy(sphere.center);
+    camera.up.copy(upVec);
+    controls.update();
+  }
+  syncAngleInputs(preset.az, preset.el);
+}
+
+function applyCustomAngle(azDeg, elDeg, { animate = true, fit = false } = {}) {
+  const box = new THREE.Box3().setFromObject(root);
+  if (box.isEmpty()) return;
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const dist = fit ? fitDistanceFromBox(box) : Math.max(camera.position.distanceTo(controls.target), 1);
+  const pos = sphericalToPosition(sphere.center, azDeg, elDeg, dist);
+  const upVec = Math.abs(elDeg) > 88
+    ? new THREE.Vector3(0, 1, 0)
+    : new THREE.Vector3(0, 0, 1);
+  if (animate) animateCameraTo(pos, sphere.center, upVec);
+  else {
+    camera.position.copy(pos);
+    controls.target.copy(sphere.center);
+    camera.up.copy(upVec);
+    controls.update();
+  }
+}
+
+function syncAngleInputs(az, el) {
+  const azEl = document.getElementById('azInput');
+  const elEl = document.getElementById('elInput');
+  if (azEl) azEl.value = Math.round(az);
+  if (elEl) elEl.value = Math.round(el);
+}
+
+function fitCamera() {
+  applyView('iso', { animate: true, fit: true });
 }
 
 // ============================================================================
@@ -678,7 +941,7 @@ function updateLegend({ min, max }) {
 }
 
 function showUIPanels(show) {
-  ['metaPanel','metricsPanel','layersPanel','curvesPanel','curveDetailPanel','viewPanel','legendPanel']
+  ['metaPanel','metricsPanel','layersPanel','curvesPanel','curveDetailPanel','viewPanel','topDevPanel','legendPanel']
     .forEach(id => {
       const el = document.getElementById(id);
       if (show) el.removeAttribute('hidden');
@@ -714,25 +977,30 @@ function buildLayerUI() {
   });
 }
 
-// 뷰/레이어 컨트롤
-document.getElementById('resetView').addEventListener('click', fitCamera);
-document.getElementById('topView').addEventListener('click', () => {
-  const box = new THREE.Box3().setFromObject(root);
-  if (box.isEmpty()) return;
-  const s = box.getBoundingSphere(new THREE.Sphere());
-  camera.position.set(s.center.x, s.center.y, s.center.z + s.radius * 2.2);
-  camera.up.set(0, 1, 0);
-  controls.target.copy(s.center);
-  controls.update();
+// 뷰/카메라 컨트롤
+document.getElementById('resetView').addEventListener('click', () => fitCamera());
+document.getElementById('isoView').addEventListener('click', () => applyView('iso', { animate: true, fit: true }));
+document.querySelectorAll('#viewPanel button[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => applyView(btn.dataset.view, { animate: true }));
 });
-document.getElementById('sideView').addEventListener('click', () => {
-  const box = new THREE.Box3().setFromObject(root);
-  if (box.isEmpty()) return;
-  const s = box.getBoundingSphere(new THREE.Sphere());
-  camera.position.set(s.center.x, s.center.y + s.radius * 2.5, s.center.z);
-  camera.up.set(0, 0, 1);
-  controls.target.copy(s.center);
-  controls.update();
+document.getElementById('goAngle').addEventListener('click', () => {
+  const az = parseFloat(document.getElementById('azInput').value);
+  const el = parseFloat(document.getElementById('elInput').value);
+  if (Number.isNaN(az) || Number.isNaN(el)) return;
+  applyCustomAngle(az, el, { animate: true });
+});
+document.getElementById('syncAngle').addEventListener('click', () => {
+  const cur = getCurrentAngles();
+  syncAngleInputs(cur.az, cur.el);
+});
+// Enter 로도 적용
+['azInput', 'elInput'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('goAngle').click();
+  });
+});
+document.getElementById('smoothCam').addEventListener('change', e => {
+  controls.enableDamping = e.target.checked;
 });
 document.getElementById('toggleLabels').addEventListener('change', e => {
   labelHost.style.display = e.target.checked ? '' : 'none';
@@ -852,13 +1120,52 @@ renderer.domElement.addEventListener('mousemove', e => {
 renderer.domElement.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 
 // ============================================================================
+// Top-View Deviation UI 와이어링
+// ============================================================================
+function bindTopDevUI() {
+  const bindToggle = (cbId, key) => {
+    const cb = document.getElementById(cbId);
+    if (!cb) return;
+    cb.checked = TOP_DEV[key];
+    cb.addEventListener('change', e => {
+      TOP_DEV[key] = e.target.checked;
+      rebuildTopDev();
+    });
+  };
+  bindToggle('topDevSourceCb', 'source');
+  bindToggle('topDevTargetCb', 'target');
+  bindToggle('topDevPostCb',   'post');   // disabled — 안전하게 노출만
+
+  const bindSlider = (rangeId, valId, key, formatter) => {
+    const r = document.getElementById(rangeId);
+    const v = document.getElementById(valId);
+    if (!r) return;
+    r.value = TOP_DEV[key];
+    v.textContent = formatter(TOP_DEV[key]);
+    r.addEventListener('input', e => {
+      const x = parseFloat(e.target.value);
+      TOP_DEV[key] = x;
+      v.textContent = formatter(x);
+      rebuildTopDev();
+    });
+  };
+  bindSlider('topDevThreshold', 'topDevThresholdVal', 'threshold', x => x.toFixed(1));
+  bindSlider('topDevZOffset',   'topDevZOffsetVal',   'zOffset',   x => `${x}`);
+  bindSlider('topDevSize',      'topDevSizeVal',      'size',      x => `${x}`);
+
+  updateTopDevLegend();
+}
+
+// ============================================================================
 // 부팅
 // ============================================================================
 buildLayerUI();
+bindTopDevUI();
 resize();
 showUIPanels(false);
 
 function animate() {
+  updateCameraTween();
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
