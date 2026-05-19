@@ -2,6 +2,9 @@
 data/
 viewer/data.js
 
+# 연구 기획 / 신청서 / 주요인자 — 내부 자료, 공개 금지
+research_plan/
+
 # 회사 자료 (외부 공개 금지)
 *.pdf
 *.pptx
