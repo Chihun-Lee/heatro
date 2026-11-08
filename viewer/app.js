@@ -574,6 +574,7 @@ function updateTopDevLegend() {
 
 function reloadScene() {
   clearScene();
+  window.dispatchEvent(new Event('heatro:reload'));
   if (primaryIdx < 0 || !DATASETS[primaryIdx]) {
     emptyState.classList.toggle('hidden', false);
     return;
@@ -1223,4 +1224,6 @@ function animate() {
   labelRenderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
+// 계산 패널(sim_panel.js) 연결용
+window.heatroViewer = { scene, getPrimary: () => DATASETS[primaryIdx] || null };
 animate();
