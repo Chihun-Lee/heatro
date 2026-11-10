@@ -258,6 +258,7 @@ async function ingestFiles(fileList) {
     showUIPanels(true);
   }
   document.getElementById('uploadStatus').textContent = `업로드된 데이터셋: ${DATASETS.length}`;
+  if (added.length) window.dispatchEvent(new CustomEvent('heatro:ingested', { detail: added }));
   return added;
 }
 
@@ -1225,5 +1226,27 @@ function animate() {
   requestAnimationFrame(animate);
 }
 // 계산 패널(sim_panel.js) 연결용
-window.heatroViewer = { scene, getPrimary: () => DATASETS[primaryIdx] || null };
+window.heatroViewer = {
+  scene,
+  getPrimary: () => DATASETS[primaryIdx] || null,
+  datasets: () => DATASETS,
+  ingest: ingestFiles,
+  setPrimary(i) { if (DATASETS[i]) { primaryIdx = i; renderDatasetList(); reloadScene(); } },
+  removeWhere(test) {
+    const kept = DATASETS.map((d, i) => (test(d) ? -1 : i)).filter(i => i >= 0);
+    const map = new Map(kept.map((old, neu) => [old, neu]));
+    const rest = kept.map(i => DATASETS[i]);
+    const compare = [...compareIndices];
+    const primary = primaryIdx;
+    DATASETS.length = 0;
+    DATASETS.push(...rest);
+    primaryIdx = map.has(primary) ? map.get(primary) : (DATASETS.length ? 0 : -1);
+    compareIndices.clear();
+    compare.forEach(i => { if (map.has(i)) compareIndices.add(map.get(i)); });
+    renderDatasetList();
+    reloadScene();
+    showUIPanels(DATASETS.length > 0);
+    document.getElementById('uploadStatus').textContent = `업로드된 데이터셋: ${DATASETS.length}`;
+  },
+};
 animate();

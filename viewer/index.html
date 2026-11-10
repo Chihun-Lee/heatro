@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Heatro Data Viewer v2.0</title>
+<meta name="description" content="조선 외판 핫밴딩 스캔 데이터를 브라우저 안에서 3D로 봅니다. 파일은 서버로 보내지 않습니다." />
+<link rel="icon" href="data:," />
 <link rel="stylesheet" href="style.css" />
 <script type="importmap">
 {
@@ -18,12 +20,15 @@
 <div id="layout">
   <aside id="sidebar">
     <header>
-      <h1>Heatro Viewer <span class="ver">v2.0</span></h1>
-      <p class="sub">조선 외판 핫밴딩 데이터 3D 뷰어 · 로컬 JSON 업로드</p>
+      <div class="titleline"><h1>Heatro Viewer</h1><span class="ver">v2.0</span></div>
+      <p class="sub">조선 외판 핫밴딩 데이터 3D 뷰어, 로컬 <abbr>JSON</abbr> 업로드</p>
     </header>
 
     <section class="panel" id="uploadPanel">
       <h2>1. 데이터 불러오기</h2>
+      <label class="stacked" for="exampleSelect">가상 데이터 예시</label>
+      <select id="exampleSelect" aria-describedby="exampleDesc"></select>
+      <p class="hint" id="exampleDesc"></p>
       <div id="dropZone" class="drop-zone">
         <p><b>JSON 파일을 여기로 드래그</b></p>
         <p class="hint">또는</p>
@@ -35,9 +40,9 @@
 
     <section class="panel" id="datasetsPanel">
       <h2>2. Datasets</h2>
-      <p class="hint">▣ = Primary (상세 표시) · ☑ = Compare (Source 표면만 겹쳐 표시)</p>
+      <p class="hint">▣ = Primary (상세 표시), ☑ = Compare (Source 표면만 겹쳐 표시)</p>
       <div id="datasetList"></div>
-      <div class="row" style="margin-top:6px">
+      <div class="row row-top">
         <button id="clearDatasets">전체 제거</button>
       </div>
     </section>
@@ -78,7 +83,7 @@
     </section>
 
     <section class="panel" id="viewPanel" hidden>
-      <h2>View · Camera</h2>
+      <h2>View, Camera</h2>
       <div class="row preset-row">
         <button id="resetView" title="전체 프레임에 맞춤">Fit</button>
         <button id="isoView" title="등각 투상 (Az 45°, El 35°)">ISO</button>
@@ -109,7 +114,7 @@
         <label><input type="checkbox" id="toggleWire" /> Wireframe 표시</label>
       </div>
       <p class="hint hint-controls">
-        좌클릭=회전 · <b>휠클릭=화면이동(Pan)</b> · 우클릭=화면이동 · 스크롤=줌 · Shift+드래그=Pan
+        좌클릭=회전, <b>휠클릭=화면이동(Pan)</b>, 우클릭=화면이동, 스크롤=줌, Shift+드래그=Pan
       </p>
     </section>
 
@@ -144,20 +149,21 @@
     </section>
 
     <section class="panel" id="legendPanel" hidden>
-      <h2>Deviation Legend · 일치도</h2>
+      <h2>Deviation Legend, 일치도</h2>
       <div id="legendBar"></div>
       <div id="legendTicks"></div>
-      <p class="hint" id="legendSummary">—</p>
+      <p class="hint" id="legendSummary"></p>
     </section>
 
     <section class="panel" id="helpPanel">
       <h2>도움말</h2>
       <ul class="help">
+        <li><b>가상 데이터 예시</b>는 식으로 만든 곡면입니다. 실제 판 자료가 아니며, 파일을 올리면 예시는 목록에서 빠집니다.</li>
         <li><b>가열 전 스캔</b> = Source 표면 (파랑)</li>
         <li><b>설계 목표</b> = Target 표면 (금색)</li>
         <li><b>가열 후 스캔</b>은 <u>다음 iteration의 JSON</u>을 올려 Primary로 설정하고, 이전 JSON을 Compare로 추가하면 겹쳐볼 수 있음</li>
         <li>Compare는 각 데이터셋의 Source 표면만 고유 색으로 표시</li>
-        <li><b>v2.0 신규</b>: View 패널의 Az/El 입력으로 임의 각도 부드럽게 전환 · 휠클릭으로 화면 이동 · <i>Top-View Deviation</i> 으로 편차 한눈 확인</li>
+        <li><b>v2.0 신규</b>: View 패널의 Az/El 입력으로 임의 각도 부드럽게 전환, 휠클릭으로 화면 이동, <i>Top-View Deviation</i> 으로 편차 한눈 확인</li>
       </ul>
     </section>
   </aside>
@@ -166,10 +172,12 @@
     <div id="canvas-host"></div>
     <div id="label-host"></div>
     <div id="tooltip"></div>
+    <div id="exampleBadge" role="status" hidden></div>
     <div id="credit">
-      <div class="credit-line"><b>Heatro Viewer</b> · v2.0</div>
-      <div class="credit-line">Updated 2026-05-14</div>
-      <div class="credit-line">Chihun Lee · <a href="mailto:chihunlee@kims.re.kr">chihunlee@kims.re.kr</a></div>
+      <div class="credit-line"><b>Heatro Viewer</b> v2.0</div>
+      <div class="credit-line">Updated 2026-11-10</div>
+      <div class="credit-line">Chihun Lee</div>
+      <div class="credit-line"><a href="mailto:chihunlee@kims.re.kr">chihunlee@kims.re.kr</a></div>
     </div>
     <div id="emptyState">
       <div>
@@ -182,5 +190,6 @@
 </div>
 <script type="module" src="app.js"></script>
 <script type="module" src="sim_panel.js"></script>
+<script type="module" src="examples.js"></script>
 </body>
 </html>

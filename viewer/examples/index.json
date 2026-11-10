@@ -1,0 +1,47 @@
+[
+ {
+  "id": "cylinder",
+  "title": "원통형 판",
+  "desc": "평판을 길이방향으로 한 번 굽힌 가장 단순한 경우입니다.",
+  "file": "cylinder.json",
+  "lines": 4,
+  "rmsBefore": 4.45,
+  "rmsAfter": 0.41
+ },
+ {
+  "id": "dome",
+  "title": "볼록형 판",
+  "desc": "평판을 길이와 폭 두 방향으로 함께 굽힙니다.",
+  "file": "dome.json",
+  "lines": 5,
+  "rmsBefore": 4.29,
+  "rmsAfter": 1.85
+ },
+ {
+  "id": "saddle",
+  "title": "안장형 판",
+  "desc": "폭방향은 먼저 롤로 굽혀 둔 판에 길이방향 곡을 더합니다.",
+  "file": "saddle.json",
+  "lines": 5,
+  "rmsBefore": 3.81,
+  "rmsAfter": 0.18
+ },
+ {
+  "id": "twist",
+  "title": "비틀린 판",
+  "desc": "비틀림이 섞여 윗면 가열만으로는 다 잡히지 않는 경우입니다.",
+  "file": "twist.json",
+  "lines": 4,
+  "rmsBefore": 3.17,
+  "rmsAfter": 0.95
+ },
+ {
+  "id": "finish",
+  "title": "마무리 단계 판",
+  "desc": "거의 다 된 판에 국부 편차만 남은 경우입니다.",
+  "file": "finish.json",
+  "lines": 1,
+  "rmsBefore": 0.96,
+  "rmsAfter": 0.79
+ }
+]
