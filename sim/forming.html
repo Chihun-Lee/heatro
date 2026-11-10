@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>곡면 가공 테스트</title>
+<meta name="description" content="판과 목표 곡면을 고르고 가열선을 더해 가며 곡면이 어떻게 변하는지 3D로 봅니다. 수치는 해석값입니다.">
+<link rel="icon" href="data:,">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="forming">
+<header class="topbar">
+  <a class="mark" href="./">곡가공 시뮬레이터</a>
+  <nav class="tabs" aria-label="도구">
+    <a href="./#simulator">시뮬레이터</a>
+    <a href="./#forming" aria-current="page">곡면 가공</a>
+    <a href="./#viewer">뷰어</a>
+  </nav>
+  <div class="topbar-side"><span class="synth-tag" id="synthTag">가상 데이터</span><button id="themeBtn" data-free="1" title="화면 밝기">테마: 자동</button></div>
+</header>
+<div class="pagehead">
+  <h1>곡면 가공 테스트</h1>
+  <p>판과 목표 곡면을 고르고 가열선을 더해 가며 곡면이 어떻게 변하는지 봅니다. 화면의 수치는 모두 해석 모델의 계산값이며 실측이 아닙니다.</p>
+</div>
+
+<main class="work">
+  <aside class="col">
+    <section class="card">
+      <h2>1. 판과 목표</h2>
+      <div class="grid">
+        <label>길이 mm<input id="L" type="number" value="3000" min="300" step="100"></label>
+        <label>폭 mm<input id="W" type="number" value="2000" min="300" step="100"></label>
+        <label>두께 mm<input id="t" type="number" value="20" min="5" max="80" step="1"></label>
+        <label>격자 간격 mm<input id="dx" type="number" value="50" min="10" step="5"></label>
+      </div>
+      <div class="grid">
+        <label>시작 형상<select id="srcShape"></select></label>
+        <label>시작 깊이 mm<input id="srcDepth" type="number" value="10" min="0" step="1"></label>
+        <label>목표 곡면<select id="tgtShape"></select></label>
+        <label>목표 깊이 mm<input id="tgtDepth" type="number" value="15" min="0" step="1"></label>
+      </div>
+      <label class="file-btn" id="plateFileBtn">판 파일 불러오기 (JSON)
+        <input id="plateFile" type="file" accept=".json,application/json" hidden>
+      </label>
+      <div class="row" id="backRow" hidden><button id="backSynthetic">합성 판으로 돌아가기</button></div>
+      <p class="hint" id="plateInfo">판을 준비하는 중입니다.</p>
+      <p class="hint">불러온 판 파일은 이 화면의 메모리에서만 씁니다. 저장하거나 보내지 않습니다.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. 가열 세기</h2>
+      <label class="stacked" for="compMode">세기를 구하는 방법</label>
+        <select id="compMode">
+          <option value="ai">AI 시뮬레이터 (브라우저 안에서 바로 계산)</option>
+          <option value="direct">세 값 직접 입력</option>
+          <option value="table">보정표(JSON) 사용</option>
+        </select>
+      <div class="grid" id="condBox">
+        <label><span id="speedText">속도 mm/s</span><input id="speed" type="number" value="6" min="0.5" step="0.5"></label>
+        <label id="peakLabel">최고온도 ℃<input id="peak" type="number" value="1000" min="300" max="1300" step="10"></label>
+      </div>
+      <div id="directBox" class="grid" hidden>
+        <label>각변형 mrad<input id="dirTheta" type="number" value="5" step="0.1"></label>
+        <label>횡수축 mm<input id="dirTrans" type="number" value="0.02" step="0.001"></label>
+        <label>종수축 mm<input id="dirLong" type="number" value="0.025" step="0.001"></label>
+        <label>가열선 방향 각변형 mrad<input id="dirThetaL" type="number" step="0.1" placeholder="없음"></label>
+      </div>
+      <div id="aiBox" hidden>
+        <div class="note-warn" id="aiNote" hidden></div>
+        <div class="grid gap-top">
+          <label>열원 반경 mm<input id="aiR0" type="number" step="1"></label>
+          <label>열원-수냉 거리 mm<input id="aiGap" type="number" step="10"></label>
+          <label>수냉 세기 W/mm²K ×1000<input id="aiH" type="number" step="0.5"></label>
+          <label>항복강도 MPa<input id="aiFy" type="number" step="5"></label>
+        </div>
+        <div class="checks"><label class="check"><input id="aiWater" type="checkbox" checked> 수냉 사용</label></div>
+        <p class="hint" id="aiStatus">AI 모델을 불러오면 표시합니다.</p>
+      </div>
+      <div id="tableBox" hidden>
+        <label class="file-btn">보정표 JSON 고르기
+          <input id="tableFile" type="file" accept=".json,application/json" hidden>
+        </label>
+        <p class="hint" id="tableInfo">아직 보정표를 불러오지 않았습니다.</p>
+      </div>
+      <div class="kv" id="compView">아직 세기를 계산하지 않았습니다.</div>
+      <div class="row" id="compRow"><button id="compRun">이 조건으로 세기 계산</button></div>
+      <p class="hint" id="compNote"></p>
+      <details id="endBox"><summary>끝단 구간 (선택)</summary>
+        <div class="grid gap-top">
+          <label>끝단 길이 mm<input id="endLen" type="number" min="0" step="10" placeholder="끔"></label>
+          <label>끝단 배율<input id="endRatio" type="number" min="0.05" step="0.05" value="0.5"></label>
+        </div>
+        <div class="checks"><label class="check"><input id="endKeep" type="checkbox"> 선 전체 총량을 균일 분포와 같게</label></div>
+        <p class="hint">양 끝 구간의 횡수축을 가운데의 일정 배율로 바꿉니다 (기본 끔). 끝단 길이의 값은 3D 해석에서 정해 넣습니다. 이 화면에 기본값은 없습니다.</p>
+        <p class="hint">시작 형상이 평판이면 이 해석 모델(선형)에서 횡수축만으로는 판 높이(z)가 달라지지 않아 남은 편차 수치가 그대로입니다. 곡판에서 시작할 때 차이가 납니다.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>3. 가열선</h2>
+      <label class="stacked">추천 방식
+        <select id="recMode">
+          <option value="fixed">고정 직선</option>
+          <option value="traced">추적선 (만들 변형의 주방향을 따라)</option>
+          <option value="mixed">혼합 (직선 + 추적선)</option>
+        </select>
+      </label>
+      <p class="hint" id="recHint"></p>
+      <div class="grid gap-top">
+        <label>최대 줄 수<input id="maxLines" type="number" value="16" min="1" max="40" step="1"></label>
+        <label>줄별 최대 배수<input id="wmax" type="number" value="2" min="0.2" step="0.5"></label>
+        <label>최소 간격 mm<input id="minGap" type="number" value="150" min="0" step="10"></label>
+        <label>가열하는 면<select id="sides"><option value="both">양면 (판 뒤집기 포함)</option><option value="top">윗면만</option></select></label>
+      </div>
+      <div class="checks">
+        <label class="check"><input id="famAcross" type="checkbox" checked> 폭방향 선</label>
+        <label class="check"><input id="famAlong" type="checkbox" checked> 길이방향 선</label>
+      </div>
+      <details><summary>자세한 설정</summary>
+        <div class="grid gap-top">
+          <label>후보선 간격 mm<input id="pitch" type="number" value="150" min="20" step="10"></label>
+          <label>손으로 넣을 때 면<select id="manualSide"><option value="top">윗면</option><option value="bottom">아랫면</option></select></label>
+        </div>
+        <div class="checks"><label class="check" id="stopWrap"><input id="stopRule" type="checkbox" checked> 이득이 시간 증가보다 작은 줄은 빼기</label></div>
+        <p class="hint">추적선·혼합에만 씁니다. 판단 기준 α = 0.2 는 우리가 정한 조정값입니다.</p>
+      </details>
+      <button id="recommend" class="main">가열선 자동 추천</button>
+      <div class="row">
+        <button id="manual">마우스로 직접 추가</button>
+        <button id="clear">전부 지우기</button>
+      </div>
+      <p class="hint" id="manualHint" hidden>판 위를 두 번 클릭하면 선이 하나 생깁니다. 다 넣었으면 버튼을 다시 누르거나 Esc 키를 누릅니다.</p>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="msg" role="status" aria-live="polite"></div>
+    </section>
+  </aside>
+
+  <section class="center">
+    <div class="card toolbar">
+      <div class="seg" role="group" aria-label="보는 상태">
+        <button data-view="before" data-free="1" aria-pressed="false">가공 전</button>
+        <button data-view="after" data-free="1" aria-pressed="true">가공 후</button>
+        <button data-view="target" data-free="1" aria-pressed="false">목표</button>
+      </div>
+      <label class="inline">변형 배율 <input id="exag" data-free="1" type="range" min="1" max="60" step="1" value="10"><span id="exagVal">×10</span></label>
+      <label class="inline">색 범위
+        <select id="colorRange" data-free="1">
+          <option value="auto">자동</option><option value="1">±1 mm</option><option value="2">±2 mm</option><option value="5">±5 mm</option><option value="10">±10 mm</option><option value="20">±20 mm</option>
+        </select>
+      </label>
+      <label class="check"><input id="devColor" data-free="1" type="checkbox" checked> 색 표시</label>
+      <label class="inline">색 종류
+        <select id="colorKind" data-free="1"><option value="dev">목표와의 차이</option><option value="curv">곡률 부호</option></select>
+      </label>
+      <label class="check"><input id="ghost" data-free="1" type="checkbox"> 목표 겹쳐 보기</label>
+      <label class="check"><input id="needles" data-free="1" type="checkbox"> 주방향 바늘</label>
+    </div>
+
+    <div id="view">
+      <div class="seg cam" role="group" aria-label="카메라">
+        <button data-cam="iso" data-free="1">비스듬히</button>
+        <button data-cam="top" data-free="1">위에서</button>
+        <button data-cam="side" data-free="1">옆에서</button>
+      </div>
+      <div id="viewHint">왼쪽에서 [가열선 자동 추천] 또는 [마우스로 직접 추가]를 누르세요.</div>
+      <div class="legend" id="legend">
+        <div>목표와의 차이 (지금 − 목표)</div>
+        <div class="bar2" id="legendBar"></div>
+        <div class="ticks"><span id="legLo">−</span><span>0</span><span id="legHi">+</span></div>
+        <div class="ends"><span>목표보다 낮음</span><span>목표보다 높음</span></div>
+      </div>
+      <div class="legend curv" id="legendCurv" hidden>
+        <div id="legendCurvTitle">곡률 부호 (지금 보는 곡면)</div>
+        <div class="swatches">
+          <div class="sw"><i data-curv="0"></i>안장 (K &lt; 0)</div>
+          <div class="sw"><i data-curv="1"></i>볼록 (K &gt; 0)</div>
+          <div class="sw"><i data-curv="2"></i>실린더 (K ≈ 0)</div>
+          <div class="sw"><i data-curv="3"></i>평판</div>
+        </div>
+      </div>
+      <div class="scale-note" id="scaleNote"></div>
+    </div>
+
+    <div class="card timeline">
+      <div class="tcontrols">
+        <button id="first" title="처음으로" aria-label="처음으로"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1h2v10H2zM11 1v10L5 6z"/></svg></button>
+        <button id="prev" title="한 줄 앞으로" aria-label="한 줄 앞으로"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M10 1v10L3 6z"/></svg></button>
+        <button id="play" class="main">재생</button>
+        <button id="next" title="한 줄 뒤로" aria-label="한 줄 뒤로"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1v10l7-5z"/></svg></button>
+        <button id="last" title="끝으로" aria-label="끝으로"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M8 1h2v10H8zM1 1v10l6-5z"/></svg></button>
+      </div>
+      <input id="timeline" type="range" min="0" max="1" step="0.01" value="0" aria-label="재생 위치 (줄 단위)">
+      <div class="tinfo">
+        <span id="lineCount">0 / 0줄</span>
+        <select id="rate" title="재생 빠르기" aria-label="재생 빠르기"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="2">×2</option><option value="4">×4</option></select>
+        <select id="order" title="재생 순서" aria-label="재생 순서"><option value="pos">위치 순서</option><option value="pick">고른 순서</option></select>
+      </div>
+      <div id="lineNow"></div>
+    </div>
+  </section>
+
+  <aside class="col right">
+    <section class="card" id="classCard">
+      <div class="panelhead"><h2>곡판 분류</h2><span class="hint">목표 곡면 기준, 작업 안내</span></div>
+      <div id="classBody"><p class="hint">판을 준비하는 중입니다.</p></div>
+      <p class="sub-note">곡률 부호(K·H)로 나눈 안내입니다. 현장 판단이 아니고, 실제 작업은 확인 후 정합니다.</p>
+    </section>
+    <section class="card">
+      <div class="panelhead"><h2>남은 편차</h2><span class="hint">지금 상태, 해석 모델 기준</span></div>
+      <div class="stats">
+        <div class="stat"><b id="statRms">-</b><span>RMS (mm)</span></div>
+        <div class="stat"><b id="statMax">-</b><span>최대 (mm)</span></div>
+        <div class="stat"><b id="statFrom">-</b><span>처음 RMS (mm)</span></div>
+        <div class="stat"><b id="statCut">-</b><span>줄인 비율</span></div>
+      </div>
+      <p class="sub-note">평면 기울기를 뺀 z 방향 차이이며 판 전체 격자에서 계산합니다. 열 색과 토치는 보기 위한 효과이고 온도 계산 결과가 아닙니다.</p>
+      <div class="chart-wrap">
+        <h2>줄이 늘면서 남은 RMS (mm)</h2>
+        <svg id="chart" viewBox="0 0 280 132" role="img" aria-label="가열선을 더할 때마다 남은 RMS 그래프"></svg>
+        <div class="tip" id="chartTip" hidden></div>
+      </div>
+      <div class="chart-wrap" id="curlWrap" hidden>
+        <div class="panelhead"><h2>곡 펴짐</h2><span class="hint">방향별 굽힘 변형 제곱합, 상대값, 해석값</span></div>
+        <div class="curl-legend"><span class="curl-a">── 길이(x)방향 곡</span><span class="curl-b">- - 폭(y)방향 곡</span></div>
+        <svg id="curlChart" viewBox="0 0 280 112" role="img" aria-label="가열선을 더할 때마다 방향별 굽힘 제곱합이 변하는 그래프"></svg>
+        <p class="sub-note" id="curlNote"></p>
+      </div>
+    </section>
+    <section class="card">
+      <div class="panelhead"><h2>가열선 목록</h2><span class="hint" id="listCount"></span></div>
+      <p class="hint" id="timeTotal" hidden></p>
+      <div id="lineList"></div>
+      <p class="hint" id="listEmpty">아직 가열선이 없습니다.</p>
+    </section>
+  </aside>
+</main>
+<div id="fatal"></div>
+<script type="module" src="forming.js" onerror="(function(){var f=document.getElementById('fatal');f.style.display='flex';f.textContent='화면 구성 파일을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.';})()"></script>
+</body>
+</html>

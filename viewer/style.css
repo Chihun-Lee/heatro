@@ -34,6 +34,8 @@ code { padding: 0 var(--space-2xs); font-family: var(--font-outlier); background
 #sidebar { overflow-y: auto; background: var(--color-paper-2); border-right: var(--rule-hair) solid var(--color-rule); }
 #sidebar header { padding: var(--space-md); border-bottom: var(--rule-hair) solid var(--color-rule); }
 .titleline { display: flex; align-items: baseline; gap: var(--space-xs); }
+.applinks { display: flex; gap: var(--space-sm); margin-top: var(--space-2xs); font-size: 12px; }
+.applinks a { padding-block: var(--space-2xs); }
 .panel { padding: var(--space-sm) var(--space-md); border-bottom: var(--rule-hair) solid var(--color-rule); }
 .panel[hidden] { display: none; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: var(--space-2xs) 0; }

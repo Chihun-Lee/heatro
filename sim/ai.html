@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>곡가공 시뮬레이터 (가상 데이터 시연)</title>
+<meta name="description" content="가상 데이터로 학습한 AI 모델로 선상가열 결과를 조건을 바꾸는 즉시 계산합니다. 실제 판이나 기업 자료를 쓰지 않았습니다.">
+<link rel="icon" href="data:,">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="mark" href="./">곡가공 시뮬레이터</a>
+  <nav class="tabs" aria-label="도구">
+    <a href="./#simulator" aria-current="page">시뮬레이터</a>
+    <a href="./#forming">곡면 가공</a>
+    <a href="./#viewer">뷰어</a>
+  </nav>
+  <div class="topbar-side"><span class="synth-tag">가상 데이터</span></div>
+</header>
+<div class="pagehead">
+  <h1>AI 실시간 시뮬레이터 (곡가공 선상가열)</h1>
+  <p>공개 재료 물성과 자체 3D 열-탄소성 해석으로 만든 가상 자료를 학습한 시연용 모델입니다. 실제 판이나 기업 자료는 쓰지 않았습니다. 값은 해석의 추정이며 실측이 아닙니다. 조건을 바꾸면 브라우저 안에서 바로 다시 계산합니다.</p>
+</div>
+<main class="work">
+<section class="panel">
+  <h2>가열 조건</h2>
+  <div id="warn"></div>
+  <div id="controls_inner"></div>
+  <label class="check"><input id="in_water" type="checkbox" checked> 수냉 사용</label>
+  <p class="hint">목표 최고온도는 판 전체(모든 위치, 모든 시각)의 최고온도 기준입니다. 학습 범위 밖은 빨간색으로 표시됩니다. 범위 밖 결과는 믿지 마세요.</p>
+  </section>
+<section class="result">
+  <div class="seams c4 readings">
+    <div class="reading" id="card_theta"><span>각변형 θ (mrad)</span><b id="v_theta">-</b><div class="u" id="u_theta"></div><div class="ubar"><i id="b_theta"></i></div></div>
+    <div class="reading" id="card_dtrans"><span>횡수축 (mm)</span><b id="v_dtrans">-</b><div class="u" id="u_dtrans"></div><div class="ubar"><i id="b_dtrans"></i></div></div>
+    <div class="reading" id="card_dlong"><span>종수축 (mm)</span><b id="v_dlong">-</b><div class="u" id="u_dlong"></div><div class="ubar"><i id="b_dlong"></i></div></div>
+    <div class="reading"><span>중앙 단면 최고온도 ℃</span><b id="v_tmax">-</b><div class="u">길이 중앙 단면 예측의 최고값. 목표 최고온도(판 전체 기준)보다 낮을 수 있습니다</div></div>
+  </div>
+  <div class="panel">
+    <div class="panelhead"><h2>판 변형 이미지</h2><span class="hint">가상 평판 3000 × 2000 mm. 왼쪽 조건의 AI 값을 줄마다 같게 넣어 계산한 해석값이며 실측이 아닙니다.</span></div>
+    <div class="toolbar plate-tools">
+      <div class="seg" role="group" aria-label="가열선 넣는 방법">
+        <button id="pvStraight" aria-pressed="false">직선 그리기</button>
+        <button id="pvFree" aria-pressed="false">자유선 그리기</button>
+      </div>
+      <button id="pvCoord">좌표로 추가</button>
+      <button id="pvClear">전부 지우기</button>
+      <label class="inline">변형 배율 <input id="pvExag" type="range" min="1" max="100" step="1" value="30"><span id="pvExagVal">×30</span></label>
+      <button id="pvSave">이미지 저장</button>
+    </div>
+    <div class="plate-grid">
+      <div class="plate-view" id="pvHost">
+        <div class="seg cam" role="group" aria-label="카메라">
+          <button data-pvcam="iso">비스듬히</button>
+          <button data-pvcam="top">위에서</button>
+          <button data-pvcam="side">옆에서</button>
+        </div>
+        <div class="plate-hint" id="pvHint"></div>
+        <div class="legend">
+          <div>높이 변화 mm (판 전체 기울기를 뺀 값)</div>
+          <div class="bar2" id="pvLegendBar"></div>
+          <div class="ticks"><span id="pvLo">-</span><span>0</span><span id="pvHi">+</span></div>
+        </div>
+        <div class="scale-note" id="pvScale"></div>
+      </div>
+      <div class="plate-side">
+        <div class="seams c2 readings minor">
+          <div class="reading"><span>가열선 (줄)</span><b id="pvCount">0</b></div>
+          <div class="reading"><span>총 길이 (m)</span><b id="pvLength">-</b></div>
+          <div class="reading"><span>높낮이 차 (mm)</span><b id="pvRange">-</b></div>
+          <div class="reading"><span>판 계산 (ms)</span><b id="pvMs">-</b></div>
+        </div>
+        <div id="pvMsg" role="status" aria-live="polite"></div>
+        <p class="note-warn" id="pvNear" hidden></p>
+        <div class="plate-list" id="pvList"></div>
+        <p class="hint" id="pvEmpty" hidden>가열선이 없습니다. 위 단추로 넣어 보세요.</p>
+        <p class="hint">좌표 단위는 mm이고, 원점은 빨강(x)·초록(y) 화살표가 시작되는 모서리입니다. 호박색은 윗면, 파랑은 아랫면 가열입니다. 판 끝 가까운 줄도 같은 세기로 계산하므로 실제보다 크게 나올 수 있습니다.</p>
+      </div>
+    </div>
+  </div>
+  <div class="seams c4 readings minor">
+    <div class="reading" id="card_q"><span>필요 열속 q (mW/mm²)</span><b id="v_q">-</b><div class="u" id="u_q"></div><div class="ubar"><i id="b_q"></i></div></div>
+    <div class="reading" id="card_S_t"><span>S_t (mm²)</span><b id="v_S_t">-</b><div class="u" id="u_S_t"></div><div class="ubar"><i id="b_S_t"></i></div></div>
+    <div class="reading" id="card_B_t"><span>B_t (mm³)</span><b id="v_B_t">-</b><div class="u" id="u_B_t"></div><div class="ubar"><i id="b_B_t"></i></div></div>
+    <div class="reading" id="card_S_l"><span>S_l (mm²)</span><b id="v_S_l">-</b><div class="u" id="u_S_l"></div><div class="ubar"><i id="b_S_l"></i></div></div>
+  </div>
+  <p class="hint">각변형·횡수축·종수축은 폭 300 × 길이 400 mm 판 조각(스트립)에 가열선 1줄을 넣었을 때의 변형량입니다(변위 기반). 막대는 모델이 스스로 판단한 불확실 폭(2σ)을 값으로 나눈 비율이며, 폭의 크기는 학습 표본을 하나씩 빼고 잰 오차로 맞췄습니다. 참고로 고유변형 적분(S_t, B_t, S_l)으로 환산한 값은 다음과 같습니다(위의 변위 기반 값과 정의가 달라 조금 다를 수 있습니다): 각변형 <b id="der_theta">-</b> mrad, 횡수축 <b id="der_trans">-</b> mm, 종수축 <b id="der_long">-</b> mm.</p>
+  <div class="seams c3">
+    <div class="pane"><h2>단면 최고온도</h2><canvas class="map" id="map_tmax" role="img" aria-label="단면 최고온도 색 지도"></canvas></div>
+    <div class="pane"><h2>소성변형 (폭방향 yy)</h2><canvas class="map" id="map_epy" role="img" aria-label="폭방향 소성변형 색 지도"></canvas></div>
+    <div class="pane"><h2>소성변형 (길이방향 xx)</h2><canvas class="map" id="map_epx" role="img" aria-label="길이방향 소성변형 색 지도"></canvas></div>
+  </div>
+  <div class="seams c2">
+    <div class="pane"><div class="panelhead"><h2>시간별 단면 온도</h2><span class="hint">(열원이 단면을 지나는 순간을 0 초로)</span></div><canvas class="map" id="map_hist" role="img" aria-label="시간별 단면 온도 색 지도"></canvas>
+      <div class="row"><button id="play">자동 재생</button><input type="range" id="time_slider" min="0" max="28" step="1" aria-label="시각"><span id="time_val"></span></div></div>
+    <div class="pane"><h2>단면 중심 온도 이력</h2><canvas class="tr" id="trace" role="img" aria-label="단면 중심의 시간별 온도 그래프"></canvas></div>
+  </div>
+  <div class="panel">
+    <h2>이 모델</h2>
+    <div id="data_notice"></div>
+    <p class="hint" id="info_n"></p>
+    <p class="hint" id="timing"></p>
+    <p class="hint">시험 성능(아래)은 처음 보는 조건에 대한 교차검증 값입니다. ±는 시드(분할) 변동입니다. GP는 가우시안 과정, POD는 주성분으로 줄인 필드입니다.</p>
+    <p class="hint">학습 자료는 연속 이동 열원, 공개 물성(EN 1993-1-2), 일반적인 경계 조건으로 계산한 가상 해석입니다. 특정 회사나 실제 공정의 값이 아닙니다.</p>
+    <div class="tablewrap" id="info_table"></div><div class="tablewrap" id="info_field"></div>
+  </div>
+</section>
+</main>
+<script src="ai.js"></script>
+<script type="module" src="plate_preview.js" onerror="document.getElementById('pvHint').textContent = '3D 화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'"></script>
+</body>
+</html>
