@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>곡가공 시뮬레이터 (가상 데이터 시연)</title>
+<meta name="description" content="가상 데이터로 만든 곡가공 시뮬레이터, 곡면 가공 시험, 3D 뷰어를 한 프로그램의 탭으로 오가며 씁니다. 실제 판이나 기업 자료를 쓰지 않았습니다.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<script>try { var t = localStorage.getItem('forming.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body class="shell">
+<header class="topbar">
+  <h1 class="mark"><a href="#simulator">곡가공 시뮬레이터</a></h1>
+  <nav class="tabs" aria-label="도구">
+    <a href="#simulator" data-src="ai.html">시뮬레이터</a>
+    <a href="#forming" data-src="forming.html">곡면 가공</a>
+    <a href="#viewer" data-src="../viewer/" data-style="viewer_in_shell.css">뷰어</a>
+  </nav>
+  <div class="topbar-side"><button id="shellTheme" title="화면 밝기">테마: 자동</button></div>
+</header>
+<main class="stage" id="stage"><p class="stage-note" id="stageNote" role="status"></p></main>
+<script src="shell.js"></script>
+</body>
+</html>
