@@ -12,11 +12,23 @@ let current = null;
 let switching = false;
 
 const isExample = (d) => d.fileName.startsWith(PREFIX);
+// 목록의 예시뿐 아니라 사용자가 올린 파일도 가상 자료 표시(DeviceCode DEMO, LegacyId demo-)가 있으면 가상으로 본다
+const isSynthetic = (d) => isExample(d) || d.deviceCode === 'DEMO' || String(d.legacyId ?? '').startsWith('demo-');
 
 function showBadge() {
   const d = viewer.getPrimary();
-  badge.hidden = !(d && isExample(d));
-  if (!badge.hidden) badge.textContent = `가상 데이터: ${d.plateName}. 실제 판이 아닙니다.`;
+  badge.hidden = !(d && isSynthetic(d));
+  if (!badge.hidden) badge.textContent = `가상 데이터: ${d.plateName || d.partName || d.fileName}. 실제 판이 아닙니다.`;
+  // 목록의 각 줄에도 표시한다
+  document.querySelectorAll('#datasetList .dataset-item .name').forEach((el, i) => {
+    const row = viewer.datasets()[i];
+    if (row && isSynthetic(row) && !el.querySelector('.tag-synth')) {
+      const tag = document.createElement('span');
+      tag.className = 'tag-synth';
+      tag.textContent = '가상';
+      el.prepend(tag);
+    }
+  });
 }
 
 function chooseFromUrl() {

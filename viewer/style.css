@@ -44,6 +44,7 @@ code { padding: 0 var(--space-2xs); font-family: var(--font-outlier); background
 .stacked { display: block; margin-bottom: var(--space-2xs); color: var(--color-ink-2); font-size: 12px; }
 #exampleDesc { margin: var(--space-2xs) 0 var(--space-sm); }
 #exampleBadge { position: absolute; left: var(--space-sm); top: var(--space-sm); z-index: var(--z-raised); padding: var(--space-2xs) var(--space-sm); font-size: 13px; pointer-events: none; background: var(--color-accent-soft); border: var(--rule-hair) solid var(--color-accent); border-radius: var(--radius-pill); }
+.tag-synth { display: inline-block; margin-right: var(--space-2xs); padding: 0 var(--space-2xs); color: var(--color-ink); font-family: var(--font-body); font-size: 11px; background: var(--color-accent-soft); border-radius: 4px; }
 #simOut { margin: var(--space-xs) 0; }
 #simOut:empty { display: none; }
 #simOut .hint { margin-top: var(--space-2xs); }
